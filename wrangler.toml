@@ -1,4 +1,10 @@
-# Cloudflare Pages config (used by `npx wrangler pages deploy`; Git-connected builds read it too)
-name = "vault-unlock"
-pages_build_output_dir = "dist"
+# Cloudflare Worker with static assets. `name` must match the Worker name in the dashboard.
+name = "toolheads-unstake"
+main = "worker/index.js"
 compatibility_date = "2026-01-01"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+# The Worker only runs for /koios/*; everything else is served straight from dist/.
+run_worker_first = ["/koios/*"]

@@ -6,7 +6,7 @@ import {
 } from "./vault.js";
 import { selfTest } from "./selftest.js";
 
-// Same-origin Koios proxy (Cloudflare Pages Function, vite dev proxy, or serve.py).
+// Same-origin Koios proxy (Cloudflare Worker, vite dev proxy, or serve.py).
 const KOIOS = `${location.origin}/koios`;
 
 const $ = (id) => document.getElementById(id);

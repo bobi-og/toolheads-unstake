@@ -32,32 +32,30 @@ The page:
 4. enables signing only if every selected vault input is present, all required signers
    are the wallet's own keys, every output goes to the wallet, and every token comes back.
 
-All chain reads and the submission go through a same-origin proxy at `/koios/*`. It's a
-Cloudflare Pages Function, restricted to the 7 Koios endpoints the tool needs. That
-avoids CORS and works behind corporate HTTPS inspection.
+All chain reads and the submission go through a same-origin proxy at `/koios/*`. It's
+handled by the Cloudflare Worker in `worker/index.js`, restricted to the 7 Koios
+endpoints the tool needs. That avoids CORS and works behind corporate HTTPS inspection.
+Everything else is served as static files from `dist/`.
 
-## Deploy to Cloudflare Pages
+## Deploy to Cloudflare (Workers with static assets)
 
-**Option A: Git (recommended; builds are reproducible from the public repo)**
+**From the dashboard (Git-connected):** Workers & Pages → Create → Import a repository → pick the repo.
 
-1. Push this folder to a public GitHub repo.
-2. Cloudflare dashboard → Workers & Pages → Create → Pages → Connect to Git → pick the repo.
-3. Build settings: framework preset **None**, build command `npm run build`, output
-   directory `dist`. `.node-version` pins Node 22.
-4. Optional: Settings → Variables and Secrets → add secret `KOIOS_TOKEN` (free at
-   koios.rest) for higher rate limits.
-5. Deploy. The `functions/` folder is picked up automatically.
+- Project name: must match `name` in `wrangler.toml` (`toolheads-unstake`). Change both if you rename.
+- Build command: `npm run build`
+- Deploy command: `npx wrangler deploy`
+- Path: `/`
 
-**Option B: from your machine**
+Optional, for higher Koios rate limits: after the first deploy, go to the Worker →
+Settings → Variables and Secrets → add a **secret** `KOIOS_TOKEN` (free at koios.rest).
+That's a runtime secret, not a build variable.
+
+**From your machine:**
 
 ```
-npm ci
-npm run build
-npx wrangler pages deploy        # reads wrangler.toml; first run asks you to log in
+npm ci && npm run build
+npx wrangler deploy          # first run asks you to log in
 ```
-
-Don't use the dashboard's drag-and-drop upload. It doesn't deploy `functions/`, so the
-Koios proxy would be missing.
 
 ## Run locally
 
@@ -74,7 +72,8 @@ npm run build && python serve.py   # http://localhost:8000; honours CA_BUNDLE / 
   evaluator fix (Lucid Evolution 0.6.x drops datum hashes during local evaluation).
 - `src/main.js`: page logic and pre-signing safety checks.
 - `src/selftest.js`: emulator test, also runnable from the page.
-- `functions/koios/[[path]].js`: Cloudflare Koios proxy with an endpoint allowlist.
+- `worker/index.js`: Cloudflare Worker that serves `dist/` and proxies Koios (endpoint allowlist).
+- `wrangler.toml`: Worker config. `/koios/*` runs the Worker; everything else is static.
 - `public/_headers`: no framing, no referrer, and so on.
 - `serve.py`: local server with the same proxy.
 

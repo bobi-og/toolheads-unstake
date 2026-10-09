@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Local alternative to the Cloudflare deployment. Serves dist/ on http://localhost:8000 and proxies /koios/* -> https://api.koios.rest/api/v1/*.
+Local alternative to the Cloudflare Worker. Serves dist/ on http://localhost:8000 and proxies /koios/* -> https://api.koios.rest/api/v1/*.
 
 The page talks only to localhost (same origin, no CORS); Python makes the Koios
 calls, so TLS inspection is handled the same way as in toolhead_vault_probe.py:
