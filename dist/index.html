@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Vault Unlock</title>
+  <meta name="description" content="Unofficial community tool to unlock your own NFTs from the vault script 4e184586…acc4d (Toolheads staking vault). Use at your own risk." />
+  <style>:root{--bg:#f6f5f2;--fg:#1d1d1b;--muted:#6b6a65;--card:#fff;--line:#e3e1db;--accent:#2b5fd9;--ok:#1e7a46;--err:#b3261e;--warn-bg:#fff4e5;--warn-line:#e8a33d;--warn-fg:#6b3d00}@media (prefers-color-scheme:dark){:root{--bg:#151514;--fg:#ecebe7;--muted:#9b9a94;--card:#1f1f1d;--line:#33322f;--accent:#7ea2ff;--ok:#5fcf8f;--err:#ff8a80;--warn-bg:#2e2310;--warn-line:#a8742a;--warn-fg:#f3d3a0}}*{box-sizing:border-box}body{background:var(--bg);color:var(--fg);margin:0;font:15px/1.55 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:780px;margin:0 auto;padding:32px 16px 64px}h1{margin:0 0 4px;font-size:24px}.sub{color:var(--muted);margin:0 0 20px}code,.mono{word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}section{background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:14px;padding:16px 18px}h2{text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 10px;font-size:13px}button{font:inherit;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;border-radius:8px;margin:0 8px 8px 0;padding:9px 16px}button.secondary{color:var(--accent);background:0 0}button:disabled{opacity:.4;cursor:not-allowed}button img{vertical-align:-4px;width:18px;height:18px;margin-right:6px}input[type=text]{font:inherit;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:8px;width:100%;margin-bottom:8px;padding:8px 10px}.warn{background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn-fg)}.warn h2{color:var(--warn-fg)}.warn ul{margin:0 0 12px;padding-left:20px}.warn li{margin-bottom:4px}.accept{cursor:pointer;align-items:flex-start;gap:10px;font-weight:600;display:flex}.accept input{width:18px;height:18px;margin-top:4px}dl{grid-template-columns:170px 1fr;gap:6px 12px;margin:10px 0 0;display:grid}dt{color:var(--muted)}dd{margin:0}.ok{color:var(--ok)}.err{color:var(--err)}.utxo{border-top:1px solid var(--line);align-items:flex-start;gap:10px;padding:10px 0;display:flex}.utxo:first-child{border-top:0}.utxo input{width:18px;height:18px;margin-top:4px}.assets{margin-top:2px}.pill{border:1px solid var(--line);border-radius:999px;margin:2px 4px 0 0;padding:1px 8px;font-size:13px;display:inline-block}#log{white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:13px}details{margin-top:8px}summary{cursor:pointer;color:var(--muted)}pre{white-space:pre-wrap;word-break:break-all;background:var(--bg);border-radius:6px;max-height:220px;padding:10px;font-size:12px;overflow:auto}footer{color:var(--muted);margin-top:24px;font-size:13px}.hidden{display:none}@media (max-width:560px){dl{grid-template-columns:1fr}dt{margin-top:6px}}</style>
+  <script type="module" crossorigin src="./assets/index-BkDQjYrE.js"></script>
+</head>
+<body>
+<main>
+  <h1>Vault Unlock</h1>
+  <p class="sub">Unofficial community tool to return your own NFTs from the vault script
+    <code>4e184586…acc4d</code> (used by the Toolheads staking vault) back to your wallet.</p>
+
+  <section class="warn" id="disclaimer">
+    <h2>Read this first</h2>
+    <ul>
+      <li><strong>Use at your own risk.</strong> This tool worked for me. It may not work for you.</li>
+      <li><strong>No responsibility.</strong> I take no responsibility for anything that happens to your wallet, NFTs, ADA or anything else as a result of using it.</li>
+      <li><strong>No support.</strong> I offer no support, no help and no guarantees. Don't contact me about it.</li>
+      <li><strong>Check the transaction before signing.</strong> Your wallet shows what you are about to sign. If anything goes anywhere other than your own wallet, reject it.</li>
+      <li><strong>Beware of scammers.</strong> Nobody legitimate will DM you about this tool or offer "help" using it. Never share your seed phrase, with anyone, ever. This page never asks for it.</li>
+      <li><strong>Not affiliated</strong> with Toolheads, CNFT Tools, any marketplace or any project team.</li>
+      <li>Only open this page at the address you were given. Copies elsewhere may be modified to steal funds.</li>
+      <li>No backend, no tracking. Everything runs in your browser. Chain data comes from the public Koios API.</li>
+    </ul>
+    <label class="accept"><input type="checkbox" id="accept" /> I have read this and use the tool entirely at my own risk.</label>
+  </section>
+
+  <section>
+    <h2>1 · Connect your wallet</h2>
+    <div id="wallets"><span class="sub">Tick the box above first.</span></div>
+    <dl id="walletInfo"></dl>
+  </section>
+
+  <section>
+    <h2>2 · Your locked UTXOs</h2>
+    <div id="found"><span class="sub">Connect a wallet to search.</span></div>
+    <details id="manual">
+      <summary>Not found? Add a vault UTXO by reference</summary>
+      <p class="sub" style="margin:8px 0">Paste <code>txhash#index</code> from a block explorer. It must still be unlocked by a key in this wallet.</p>
+      <input type="text" id="manualRef" placeholder="8b55d17a…c9ed#0" spellcheck="false" autocomplete="off" />
+      <button id="manualAdd" class="secondary" disabled>Add</button>
+    </details>
+  </section>
+
+  <section>
+    <h2>3 · Build &amp; review</h2>
+    <button id="build" disabled>Build unlock transaction</button>
+    <dl id="summary"></dl>
+    <details id="cborBox" class="hidden"><summary>Unsigned transaction CBOR</summary><pre id="cbor"></pre></details>
+  </section>
+
+  <section>
+    <h2>4 · Sign &amp; submit</h2>
+    <p class="sub" style="margin:0 0 10px">Your wallet opens. Check every output there before you approve.</p>
+    <button id="sign" disabled>Sign &amp; submit</button>
+    <div id="result"></div>
+  </section>
+
+  <section>
+    <h2>Self-test (optional, offline)</h2>
+    <p class="sub" style="margin:0 0 10px">Runs the unlock against a simulated chain in your browser. No wallet, no network.</p>
+    <button id="selftest" class="secondary">Run self-test</button>
+  </section>
+
+  <section>
+    <h2>Log</h2>
+    <div id="log"></div>
+  </section>
+
+  <footer>
+    What the vault validator checks (decompiled): the redeemer is <code>Constr 0 ["Toolheads"]</code>, and the key in the datum signed the transaction.
+    Nothing else. That's why only the original depositor's wallet can unlock a UTXO, and why this tool can't touch anyone else's.
+  </footer>
+</main>
+</body>
+</html>
