@@ -1,13 +1,15 @@
 import "./polyfills.js";
 import { Lucid, Koios, CML, toText } from "@lucid-evolution/lucid";
 import {
-  vaultAddressFor, matchOwnedVaultUtxo, buildUnlock, paymentKeyHash, stakeKeyHash,
-  isVaultAddress, MAX_INPUTS_PER_TX,
+  vaultAddressFor, toolAddress, matchOwnedUtxo, datumHashesToResolve, buildUnlock,
+  paymentKeyHash, stakeKeyHash, contractForAddress, unlockableFrom, CONTRACTS, MAX_INPUTS_PER_TX,
 } from "./vault.js";
 import { selfTest } from "./selftest.js";
 
-// Same-origin Koios proxy (Cloudflare Worker, vite dev proxy, or serve.py).
-const KOIOS = `${location.origin}/koios`;
+// Koios base URL. Default: same-origin proxy (Cloudflare Worker, vite dev proxy, serve.py).
+// Static hosts without a proxy (GitHub Pages) build with VITE_KOIOS_URL=https://api.koios.rest/api/v1
+// and call Koios directly from the browser.
+const KOIOS = import.meta.env.VITE_KOIOS_URL || `${location.origin}/koios`;
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
@@ -15,14 +17,17 @@ const log = (msg, cls = "") => $("log").append(el("div", { className: cls, textC
 const row = (dl, k, v, cls = "") => dl.append(el("dt", { textContent: k }), el("dd", { textContent: v, className: cls }));
 const ada = (l) => `${(Number(l) / 1e6).toFixed(6)} ADA`;
 const toHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+// Registered tickers that differ from the on-chain asset name.
+const KNOWN = { "ac015c38917f306a84748c2d646bed90bdd64421c592163e60702d735453555255": "TOOL" };
 const assetLabel = (unit) => {
+  if (KNOWN[unit]) return KNOWN[unit];
   const nameHex = unit.slice(56);
   try { const t = toText(nameHex); if (/^[\x20-\x7e]+$/.test(t)) return t; } catch {}
   return nameHex ? `${unit.slice(0, 8)}…/${nameHex.slice(0, 16)}` : unit.slice(0, 12);
 };
 
-async function koios(path, body) {
-  const r = await fetch(`${KOIOS}/${path}`, {
+async function koios(path, body, query = "") {
+  const r = await fetch(`${KOIOS}/${path}${query}`, {
     method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body),
   });
@@ -32,7 +37,9 @@ async function koios(path, body) {
 
 // ----- state -----
 let lucid, api, walletAddrs = new Set(), walletPkhs = new Set(), walletStakes = new Set(), changeAddr;
-const found = new Map(); // "tx#ix" -> {utxo, ownerPkh, inline}
+const found = new Map(); // "tx#ix" -> {contract, utxo, ownerPkh, lockTime, inline}
+const fmtNum = (q) => q.toLocaleString("en-US");
+const fmtDate = (ms) => new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 let signBuilder;
 
 // ----- disclaimer gate -----
@@ -85,16 +92,50 @@ async function connect(key, name) {
 }
 
 // ----- discovery -----
-async function discover() {
-  const vaultAddrs = [...walletStakes].map((s) => vaultAddressFor(s));
-  log(`Searching ${vaultAddrs.length} vault address(es) for your stake key(s)…`);
-  const rows = await koios("address_utxos", { _addresses: vaultAddrs, _extended: true });
-  let foreign = 0;
-  for (const u of rows) {
-    const m = matchOwnedVaultUtxo(u, walletPkhs);
-    if (m) found.set(`${u.tx_hash}#${u.tx_index}`, m); else foreign++;
+/** All UTXOs at the given addresses (Koios pages at 1000 rows). */
+async function addressUtxos(addresses) {
+  const out = [];
+  for (let offset = 0; ; offset += 1000) {
+    const page = await koios("address_utxos", { _addresses: addresses, _extended: true }, `?offset=${offset}&limit=1000`);
+    out.push(...page);
+    if (page.length < 1000) return out;
   }
-  log(`Found ${found.size} UTXO(s) you can unlock.` + (foreign ? ` ${foreign} more at your vault address belong to a key this wallet account didn't expose. Try another account, or add them by reference.` : ""), found.size ? "ok" : "");
+}
+/** datum_hash -> CBOR for by-hash datums (TOOL staking datums can't be recomputed). */
+async function resolveDatums(rows) {
+  const hashes = datumHashesToResolve(rows);
+  const map = new Map();
+  for (let i = 0; i < hashes.length; i += 100) {
+    const res = await koios("datum_info", { _datum_hashes: hashes.slice(i, i + 100) });
+    for (const d of res) if (d.bytes) map.set(d.datum_hash, d.bytes);
+  }
+  return map;
+}
+function addMatches(rows, datums) {
+  let added = 0;
+  for (const u of rows) {
+    const m = matchOwnedUtxo(u, walletPkhs, datums);
+    if (m) { found.set(`${u.tx_hash}#${u.tx_index}`, m); added++; }
+  }
+  return added;
+}
+
+async function discover() {
+  // 1) NFT vault: one address per stake key
+  const vaultAddrs = [...walletStakes].map((s) => vaultAddressFor(s));
+  log(`Searching the NFT vault for your ${vaultAddrs.length} stake key(s)…`);
+  const vaultRows = await addressUtxos(vaultAddrs);
+  const nVault = addMatches(vaultRows, new Map());
+  const foreign = vaultRows.length - nVault;
+  log(`NFT vault: ${nVault} UTXO(s) you can unlock.` + (foreign ? ` ${foreign} more at your vault address belong to a key this wallet account didn't expose. Try another account, or add them by reference.` : ""), nVault ? "ok" : "");
+
+  // 2) TOOL staking: one shared address; owners are only visible in the datums
+  log("Searching TOOL staking (shared address, checking every stake's owner)…");
+  const toolRows = await addressUtxos([toolAddress()]);
+  const datums = await resolveDatums(toolRows);
+  const nTool = addMatches(toolRows, datums);
+  const unresolved = datumHashesToResolve(toolRows).filter((h) => !datums.has(h)).length;
+  log(`TOOL staking: ${nTool} stake(s) of yours among ${toolRows.length}.` + (unresolved ? ` (${unresolved} stake datums couldn't be looked up; if yours is missing, add it by reference.)` : ""), nTool ? "ok" : "");
   renderFound();
 }
 
@@ -105,9 +146,9 @@ $("manualAdd").onclick = async () => {
     const [u] = await koios("utxo_info", { _utxo_refs: [ref.toLowerCase()], _extended: true });
     if (!u) throw new Error("UTXO not found.");
     if (u.is_spent) throw new Error("That UTXO is already spent.");
-    if (!isVaultAddress(u.address)) throw new Error("That UTXO is not at the vault script.");
-    const m = matchOwnedVaultUtxo(u, walletPkhs);
-    if (!m) throw new Error("Its owner key isn't in this wallet account. Only the depositor's key can unlock it.");
+    if (!contractForAddress(u.address)) throw new Error("That UTXO is not at a supported contract.");
+    const m = matchOwnedUtxo(u, walletPkhs, await resolveDatums([u]));
+    if (!m) throw new Error("Its owner key isn't in this wallet account (or its datum couldn't be found). Only the depositor's key can unlock it.");
     found.set(`${u.tx_hash}#${u.tx_index}`, m);
     log(`Added ${ref}.`, "ok"); renderFound();
   } catch (e) { log(errText(e), "err"); }
@@ -116,16 +157,21 @@ $("manualAdd").onclick = async () => {
 function renderFound() {
   const box = $("found"); box.textContent = "";
   if (!found.size) { box.append(el("span", { className: "sub", textContent: "Nothing found for this wallet." })); $("build").disabled = true; return; }
-  let i = 0;
+  let n = 0;
+  const now = Date.now();
   for (const [ref, m] of found) {
-    const cb = el("input", { type: "checkbox", checked: i++ < MAX_INPUTS_PER_TX });
+    const ready = unlockableFrom(m) <= now;
+    const cb = el("input", { type: "checkbox", checked: ready && n < MAX_INPUTS_PER_TX, disabled: !ready });
+    if (cb.checked) n++;
     cb.dataset.ref = ref; cb.onchange = updateBuildButton;
     const tokens = Object.keys(m.utxo.assets).filter((k) => k !== "lovelace");
+    const status = m.lockTime == null ? "" : ready ? ` · lock ended ${fmtDate(m.lockTime)}` : ` · locked until ${fmtDate(m.lockTime)}`;
     box.append(el("label", { className: "utxo" }, cb, el("div", {},
+      el("div", { className: "kind", textContent: CONTRACTS[m.contract].label + status }),
       el("div", { className: "mono", textContent: ref }),
       el("div", { className: "assets" },
         el("span", { className: "pill", textContent: ada(m.utxo.assets.lovelace) }),
-        ...tokens.map((t) => el("span", { className: "pill", textContent: `${assetLabel(t)}${m.utxo.assets[t] > 1n ? ` ×${m.utxo.assets[t]}` : ""}` }))),
+        ...tokens.map((t) => el("span", { className: "pill", textContent: `${assetLabel(t)}${m.utxo.assets[t] > 1n ? ` ×${fmtNum(m.utxo.assets[t])}` : ""}` }))),
     )));
   }
   updateBuildButton();
@@ -144,14 +190,14 @@ $("build").onclick = async () => {
   try {
     const items = selected();
     log(`Building for ${items.length} UTXO(s); evaluating the script locally…`);
-    signBuilder = await buildUnlock(lucid, items, changeAddr);
+    signBuilder = await buildUnlock(lucid, items, changeAddr, Date.now());
     const body = signBuilder.toTransaction().body();
     const dl = $("summary"); dl.textContent = "";
 
     const ins = body.inputs(); const inRefs = new Set();
     for (let i = 0; i < ins.len(); i++) inRefs.add(`${ins.get(i).transaction_id().to_hex()}#${ins.get(i).index()}`);
     const vaultInsOk = items.every((m) => inRefs.has(`${m.utxo.txHash}#${m.utxo.outputIndex}`));
-    row(dl, "Vault inputs", vaultInsOk ? `${items.length} selected ✓` : "MISSING", vaultInsOk ? "ok" : "err");
+    row(dl, "Contract inputs", vaultInsOk ? `${items.length} selected ✓` : "MISSING", vaultInsOk ? "ok" : "err");
     row(dl, "Wallet inputs", String(inRefs.size - items.length));
 
     const rs = body.required_signers(); const signers = [];
@@ -179,6 +225,7 @@ $("build").onclick = async () => {
     const tokensOk = Object.entries(want).every(([k, q]) => (back[k] ?? 0n) >= q);
     row(dl, "Tokens returned to you", `${Object.keys(want).length} kind(s) ${tokensOk ? "✓" : "MISSING"}`, tokensOk ? "ok" : "err");
     row(dl, "Fee", ada(body.fee()));
+    if (body.validity_interval_start() != null) row(dl, "Valid for", "about 15 minutes — sign before it expires, or rebuild");
     row(dl, "Collateral", body.collateral_inputs() ? "set (only taken if the script fails on-chain)" : "none");
 
     $("cbor").textContent = signBuilder.toTransaction().to_cbor_hex(); $("cborBox").classList.remove("hidden");
@@ -197,7 +244,7 @@ $("sign").onclick = async () => {
     const hash = await signed.submit();
     const link = el("a", { href: `https://cardanoscan.io/transaction/${hash}`, target: "_blank", rel: "noopener noreferrer", textContent: hash });
     $("result").textContent = ""; $("result").append(el("p", { className: "ok" }, "Submitted: ", link));
-    log("Submitted. Your NFTs arrive once it's in a block (usually under a minute).", "ok");
+    log("Submitted. Your assets arrive once it's in a block (usually under a minute).", "ok");
     for (const m of selected()) found.delete(`${m.utxo.txHash}#${m.utxo.outputIndex}`);
     renderFound();
   } catch (e) { log(errText(e), "err"); console.error(e); $("sign").disabled = false; }

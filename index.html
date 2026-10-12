@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="referrer" content="no-referrer" />
   <title>Vault Unlock</title>
-  <meta name="description" content="Unofficial community tool to unlock your own NFTs from the vault script 4e184586…acc4d (Toolheads staking vault). Use at your own risk." />
+  <meta name="description" content="Unofficial community tool to return your own NFTs and TOOL tokens from the Toolheads staking contracts. Use at your own risk." />
   <style>
     :root {
       --bg:#f6f5f2; --fg:#1d1d1b; --muted:#6b6a65; --card:#fff; --line:#e3e1db;
@@ -40,6 +40,7 @@
     .utxo { display:flex; gap:10px; align-items:flex-start; padding:10px 0; border-top:1px solid var(--line); }
     .utxo:first-child { border-top: 0; }
     .utxo input { margin-top: 4px; width: 18px; height: 18px; }
+    .kind { font-weight: 600; font-size: 14px; }
     .assets { margin-top: 2px; }
     .pill { display:inline-block; border:1px solid var(--line); border-radius: 999px; padding: 1px 8px; margin: 2px 4px 0 0; font-size: 13px; }
     #log { font-family: ui-monospace, monospace; font-size: 13px; white-space: pre-wrap; }
@@ -53,8 +54,8 @@
 <body>
 <main>
   <h1>Vault Unlock</h1>
-  <p class="sub">Unofficial community tool to return your own NFTs from the vault script
-    <code>4e184586…acc4d</code> (used by the Toolheads staking vault) back to your wallet.</p>
+  <p class="sub">Unofficial community tool to return your own staked assets to your wallet from two contracts:
+    the Toolheads NFT vault <code>4e184586…acc4d</code> and TOOL token staking <code>c7ab6ff0…808e5f</code>.</p>
 
   <section class="warn" id="disclaimer">
     <h2>Read this first</h2>
@@ -82,7 +83,7 @@
     <div id="found"><span class="sub">Connect a wallet to search.</span></div>
     <details id="manual">
       <summary>Not found? Add a vault UTXO by reference</summary>
-      <p class="sub" style="margin:8px 0">Paste <code>txhash#index</code> from a block explorer. It must still be unlocked by a key in this wallet.</p>
+      <p class="sub" style="margin:8px 0">Paste <code>txhash#index</code> from a block explorer (the output that went to the contract). Its owner must be a key in this wallet.</p>
       <input type="text" id="manualRef" placeholder="8b55d17a…c9ed#0" spellcheck="false" autocomplete="off" />
       <button id="manualAdd" class="secondary" disabled>Add</button>
     </details>
@@ -114,8 +115,9 @@
   </section>
 
   <footer>
-    What the vault validator checks (decompiled): the redeemer is <code>Constr 0 ["Toolheads"]</code>, and the key in the datum signed the transaction.
-    Nothing else. That's why only the original depositor's wallet can unlock a UTXO, and why this tool can't touch anyone else's.
+    What the contracts check (decompiled). <strong>NFT vault:</strong> the redeemer is <code>Constr 0 ["Toolheads"]</code>, and the key in the datum signed the transaction.
+    <strong>TOOL staking:</strong> the key in the datum signed the transaction, and the transaction's validity window starts after the lock time in the datum.
+    Neither checks anything else, so only the original staker's wallet can unlock a UTXO, and this tool can't touch anyone else's.
   </footer>
 </main>
 <script type="module" src="./src/main.js"></script>

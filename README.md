@@ -1,8 +1,12 @@
 # Vault Unlock
 
-Unofficial community tool for returning your own NFTs from the vault script
-`4e184586ce5d62d46e0d1ab3305f1d7b811278f1c27eecbf2baacc4d` (used by the Toolheads
-staking vault) back to your wallet.
+Unofficial community tool for returning your own staked assets to your wallet from two
+Toolheads contracts:
+
+| Contract | Script hash | Holds |
+|---|---|---|
+| NFT vault (Plutus V2) | `4e184586ce5d62d46e0d1ab3305f1d7b811278f1c27eecbf2baacc4d` | Toolhead NFTs |
+| TOOL staking (Plutus V3) | `c7ab6ff0df90974fa01fcd7971336791207c475324f1b288e5808e5f` | TOOL tokens (on-chain name `TSURU`) |
 
 > **Disclaimer.** Use at your own risk. It worked for me; it may not work for you.
 > I take no responsibility for anything. I offer no support. Check the transaction in
@@ -10,27 +14,35 @@ staking vault) back to your wallet.
 > this, and nothing here ever needs your seed phrase. Not affiliated with Toolheads,
 > CNFT Tools or any marketplace.
 
-## How it works
+## What the contracts check (decompiled)
 
-The vault validator (Plutus V2, 238 bytes, decompiled) checks exactly two things:
+**NFT vault:** the redeemer is `Constr 0 [bytes "Toolheads"]`, and the payment key hash in
+the datum `Constr 0 [bytes pkh]` signed the transaction.
 
-1. the redeemer is `Constr 0 [bytes "Toolheads"]`;
-2. the payment key hash in the datum `Constr 0 [bytes pkh]` signed the transaction.
+**TOOL staking:** the datum is `Constr 0 [int lockTimeMs, bytes pkh]`. The transaction's
+validity range must have a finite start after `lockTimeMs`, and `pkh` must have signed.
+The redeemer isn't read.
 
-There is no admin key, deadline or output check. So the original depositor's wallet can
-unlock its own UTXOs, and nobody else can.
+Neither contract has an admin key, a deadline beyond that lock, or an output check. So
+the original staker's wallet can unlock its own UTXOs, and nobody else can.
 
-The page:
+## How the page works
 
-1. connects any CIP-30 wallet (Eternl, Lace, Vespr, Typhon, …);
-2. derives the vault address for each of the wallet's stake keys (vault script plus your
-   stake key, as deposits used) and lists the UTXOs there whose datum owner is one of
-   the wallet's payment keys. It handles both inline and by-hash datums, in either CBOR
-   encoding. You can also add a UTXO manually by `txhash#index`;
-3. builds one transaction (max 20 UTXOs) that sends everything to the wallet's change
-   address, evaluates the script locally, and shows a review;
-4. enables signing only if every selected vault input is present, all required signers
-   are the wallet's own keys, every output goes to the wallet, and every token comes back.
+1. It connects any CIP-30 wallet (Eternl, Lace, Vespr, Typhon, …).
+2. It finds your UTXOs.
+   - NFT vault: the address is the vault script plus your stake key, so it searches one
+     address per stake key in the wallet.
+   - TOOL staking: every staker shares one enterprise address, and owners are only
+     visible in datums stored by hash. So it lists that address, resolves the datums
+     with Koios `datum_info`, and keeps the ones whose owner is a key in your wallet.
+   - Fallback: add a UTXO manually by `txhash#index`.
+   - TOOL stakes still inside their lock time are shown but can't be selected.
+3. It builds one transaction (max 20 UTXOs, mixing both contracts is fine) that sends
+   everything to the wallet's change address. If any TOOL stake is included, it sets a
+   15-minute validity window. It evaluates the scripts locally and shows a review.
+4. It enables signing only if every selected contract input is present, all required
+   signers are the wallet's own keys, every output goes to the wallet, and every token
+   comes back.
 
 All chain reads and the submission go through a same-origin proxy at `/koios/*`. It's
 handled by the Cloudflare Worker in `worker/index.js`, restricted to the 7 Koios
@@ -56,6 +68,18 @@ That's a runtime secret, not a build variable.
 npm ci && npm run build
 npx wrangler deploy          # first run asks you to log in
 ```
+
+## Deploy to GitHub Pages (no proxy)
+
+1. Push to GitHub (branch `main`).
+2. Repo Settings → Pages → Source: **GitHub Actions**.
+3. The workflow in `.github/workflows/pages.yml` tests, builds with
+   `VITE_KOIOS_URL=https://api.koios.rest/api/v1` and publishes to
+   `https://<user>.github.io/<repo>/`.
+
+Without the proxy, the browser calls Koios directly. That works on normal connections,
+but can fail behind corporate HTTPS inspection or filtering. Users there can run it
+locally with `serve.py`.
 
 ## Run locally
 
